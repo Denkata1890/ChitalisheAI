@@ -31,7 +31,7 @@ instruction = """Ти си професионален асистент на на
 Ако информацията е непълна, оставяш места за попълване [използвай скоби]."""
 
 model = genai.GenerativeModel(
-    model_name='models/gemini-2.5-flash',
+    model_name='models/gemini-1.5-flash',
     system_instruction=instruction
 )
 
