@@ -3,17 +3,17 @@ import google.generativeai as genai
 import os
 import warnings
 
-# Скриваме предупрежденията
+
 warnings.filterwarnings("ignore")
 
-# 1. КОНФИГУРАЦИЯ
+
 
 API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('models/gemini-2.5-flash')
 
-# --- ТУК Е ПРОМЯНАТА ---
-@st.cache_data  # Добавяме това точно над дефиницията на функцията
+
+@st.cache_data
 def get_knowledge_base():
     context = ""
     knowledge_dir = "ai_knowledge_base"
@@ -24,13 +24,13 @@ def get_knowledge_base():
                 context += f.read() + "\n\n"
     return context
 
-# 3. ГРАФИЧЕН ИНТЕРФЕЙС СЪС STREAMLIT
+
 st.set_page_config(page_title="ИИ Читалищен Секретар", page_icon="🏛️")
 
 st.title("🏛️ ИИ Асистент 'Читалищен Секретар'")
 st.subheader("Правен консултант по ЗНЧ и администрация")
 
-# Поле за въпрос
+
 user_input = st.text_input("Задайте вашия въпрос към закона:",
                            placeholder="Напр. Колко души е кворумът за Общо събрание?")
 
@@ -51,6 +51,6 @@ if st.button("Провери в закона"):
     else:
         st.warning("Моля, въведете въпрос.")
 
-# Странична лента
+
 st.sidebar.title("За приложението")
 st.sidebar.info("Този проект е разработен в помощ на народните читалища в България")

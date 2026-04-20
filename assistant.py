@@ -1,22 +1,22 @@
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 import os
-os.environ['GRPC_VERBOSITY'] = 'ERROR' # Скрива техническите логове на Google
+os.environ['GRPC_VERBOSITY'] = 'ERROR'
 import google.generativeai as genai
 import os
 
-# 1. Твоят API Ключ
+
 API_KEY = "AIzaSyD18c9EqBzeaxlnuFWJxGDZDITtxObqAT8"
 genai.configure(api_key=API_KEY)
 
 
 def ask_ai_with_context(question):
-    # 2. Прочитаме нарязаните закони от папката ai_knowledge_base
+
     context = ""
     knowledge_dir = "ai_knowledge_base"
 
     if os.path.exists(knowledge_dir):
-        # Вземаме първите 10 парчета (chunks), за да имаме повече информация
+
         files = sorted(os.listdir(knowledge_dir))
         for filename in files:
             with open(os.path.join(knowledge_dir, filename), 'r', encoding='utf-8') as f:
@@ -24,10 +24,10 @@ def ask_ai_with_context(question):
     else:
         return "Грешка: Не намерих папка със закони. Моля, пусни първо processor.py!"
 
-    # 3. Настройка на новия модел Gemini 2.5 Flash
+
     model = genai.GenerativeModel('models/gemini-2.5-flash')
 
-    # Системен промпт
+
     prompt = f"""
     Ти си специализиран ИИ асистент за българските народни читалища. 
     Твоята задача е да помагаш на секретарите с административни и юридически въпроси.
