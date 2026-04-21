@@ -22,31 +22,38 @@ except Exception as e:
 # ==========================================
 # 2. ФУНКЦИИ ЗА GOOGLE DRIVE (ОПТИМИЗИРАНИ)
 # ==========================================
-def get_drive_service():
-    info = st.secrets["gcp_service_account"]
-    credentials = service_account.Credentials.from_service_account_info(info)
-    scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/drive'])
-    return build('drive', 'v3', credentials=scoped_credentials)
-
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
+
+    # 1. Подготвяме метаданните
     file_metadata = {
         'name': file_name,
         'parents': [folder_id]
     }
+
+    # 2. Използваме директно качване (без resumable), за да избегнем квотната проверка при малки файлове
     media = MediaIoBaseUpload(
         io.BytesIO(file_content),
         mimetype='application/octet-stream',
-        resumable=True
+        chunksize=1024 * 1024,  # 1MB парчета
+        resumable=False  # ВАЖНО: Пробвай с False
     )
-    # Качваме директно в твоята папка
-    file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id',
-        supportsAllDrives=True
-    ).execute()
-    return file.get('id')
+
+    try:
+        # 3. Опит за качване
+        file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
+        return file.get('id')
+
+    except Exception as e:
+        # Ако пак даде Quota error, това е заради собствеността.
+        # Единственият изход е да ползваш "Shared Drive" (ако имаш Workspace)
+        # или да качваш файла като "Google Doc" тип, който понякога не заема място
+        raise e
 
 # ==========================================
 # 3. СИСТЕМА ЗА ВХОД
