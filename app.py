@@ -5,13 +5,45 @@ from docx import Document
 from io import BytesIO
 import PyPDF2
 
-# --- СИСТЕМА ЗА ВХОД (БАЗА ДАННИ С ПОТРЕБИТЕЛИ) ---
-# Тук можеш да добавяш нови читалища
-USERS = {
-    "admin": "admin123",
-    "chitalishe_razlog": "pobeda1920",
-    "chitalishe_svishtov": "elena1856"
-}
+# 1. ТУК КАЗВАМЕ НА ПРОГРАМАТА ДА ВЗЕМЕ ПАРОЛИТЕ ОТ "СЕЙФА"
+try:
+    # Опитваме се да вземем списъка с потребители от Secrets
+    USERS = st.secrets["users"]
+except:
+    # Ако тестваме локално на компютъра и нямаме сейф, ползваме тази парола по подразбиране
+    USERS = {"admin": "admin123"}
+
+
+# 2. ФУНКЦИЯ ЗА ПРОВЕРКА НА ВХОДА
+def check_password():
+    # Проверяваме дали в "паметта" на браузъра вече пише, че сме вписани
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    # Ако вече сме се логнали успешно, просто продължаваме
+    if st.session_state["authenticated"]:
+        return True
+
+    # АКО НЕ СМЕ ЛОГНАТИ: Показваме формата за вход
+    st.title("🔐 Вход в Chitalishe AI Pro")
+    user = st.text_input("Потребителско име")
+    password = st.text_input("Парола", type="password")
+
+    if st.button("Влизане"):
+        # Проверяваме дали името съществува в USERS и дали паролата съвпада
+        if user in USERS and USERS[user] == password:
+            st.session_state["authenticated"] = True  # Запомни, че сме влезли
+            st.session_state["username"] = user  # Запомни кой влезе
+            st.rerun()  # Рестартирай страницата, за да се появи менюто
+        else:
+            st.error("❌ Грешно потребителско име или парола")
+    return False
+
+
+# 3. КЛЮЧОВИЯТ МОМЕНТ
+# Ако функцията върне "False" (т.е. няма успех с паролата), спри целия код дотук!
+if not check_password():
+    st.stop()
 
 
 def check_password():
@@ -41,6 +73,14 @@ def check_password():
 if not check_password():
     st.stop()
 
+# Постави това след проверката на паролата
+if st.session_state["username"] == "admin":
+    st.sidebar.warning("🛠️ Влезли сте като Администратор. Имате пълен достъп.")
+else:
+    st.sidebar.info(f"🏛️ Добре дошли, НЧ 'Светлина - 1861г.'")
+
+# Създаваме уникално име на папката за съответния потребител
+user_folder = f"data_{st.session_state['username']}"
 # --- ОТТУК НАТАТЪК СЛЕДВА ОСТАНАЛИЯТ ТИ КОД ---
 st.sidebar.write(f"👤 Вписани сте като: **{st.session_state['username']}**")
 if st.sidebar.button("Изход"):
