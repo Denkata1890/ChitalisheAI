@@ -29,6 +29,34 @@ def get_drive_service():
     return build('drive', 'v3', credentials=scoped_credentials)
 
 
+def get_or_create_folder(folder_name):
+    service = get_drive_service()
+    # Търсим папката
+    query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    # Тук използваме само supportsAllDrives=True
+    results = service.files().list(
+        q=query,
+        fields="files(id, name)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True  # List поддържа този параметър
+    ).execute()
+    items = results.get('files', [])
+
+    if not items:
+        file_metadata = {
+            'name': folder_name,
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [PARENT_FOLDER_ID]
+        }
+        folder = service.files().create(
+            body=file_metadata,
+            fields='id',
+            supportsAllDrives=True  # Create поддържа само това
+        ).execute()
+        return folder.get('id')
+    return items[0]['id']
+
+
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
 
@@ -37,24 +65,21 @@ def upload_to_drive(file_content, file_name, folder_id):
         'parents': [folder_id]
     }
 
-    # Използваме BytesIO за съдържанието
     media = MediaIoBaseUpload(
         io.BytesIO(file_content),
         mimetype='application/octet-stream',
-        resumable=True  # Това е важно за заобикаляне на някои лимити
+        resumable=True
     )
 
-    # ТУК Е МАГИЯТА: Добавяме и двата параметъра за споделено пространство
+    # ТУК Е ПОПРАВКАТА: Премахнат е грешният параметър
     file = service.files().create(
         body=file_metadata,
         media_body=media,
         fields='id',
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
+        supportsAllDrives=True
     ).execute()
 
     return file.get('id')
-
 
 def get_or_create_folder(folder_name):
     service = get_drive_service()
