@@ -5,6 +5,47 @@ from docx import Document
 from io import BytesIO
 import PyPDF2
 
+# --- СИСТЕМА ЗА ВХОД (БАЗА ДАННИ С ПОТРЕБИТЕЛИ) ---
+# Тук можеш да добавяш нови читалища
+USERS = {
+    "admin": "admin123",
+    "chitalishe_razlog": "pobeda1920",
+    "chitalishe_svishtov": "elena1856"
+}
+
+
+def check_password():
+    """Връща True, ако потребителят е въвел правилна парола."""
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if st.session_state["authenticated"]:
+        return True
+
+    # Екран за вход
+    st.title("🔐 Вход в Chitalishe AI Pro")
+    user = st.text_input("Потребителско име")
+    password = st.text_input("Парола", type="password")
+
+    if st.button("Влизане"):
+        if user in USERS and USERS[user] == password:
+            st.session_state["authenticated"] = True
+            st.session_state["username"] = user
+            st.rerun()
+        else:
+            st.error("❌ Грешно потребителско име или парола")
+    return False
+
+
+# Спираме изпълнението на останалия код, ако не е вписан
+if not check_password():
+    st.stop()
+
+# --- ОТТУК НАТАТЪК СЛЕДВА ОСТАНАЛИЯТ ТИ КОД ---
+st.sidebar.write(f"👤 Вписани сте като: **{st.session_state['username']}**")
+if st.sidebar.button("Изход"):
+    st.session_state["authenticated"] = False
+    st.rerun()
 
 # 1. ПОМОЩНИ ФУНКЦИИ
 def create_docx(text):
