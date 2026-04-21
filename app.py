@@ -50,34 +50,35 @@ def get_or_create_folder(folder_name):
 
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
-
     file_metadata = {
         'name': file_name,
         'parents': [folder_id]
     }
+    media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
 
-    media = MediaIoBaseUpload(
-        io.BytesIO(file_content),
-        mimetype='application/octet-stream',
-        resumable=True
-    )
-
-    # ТУК Е ПРОМЯНАТА:
-    # Използваме 'supportsAllDrives=True' и проверяваме квотата
-    request = service.files().create(
+    # 1. Качваме файла
+    file = service.files().create(
         body=file_metadata,
         media_body=media,
         fields='id',
-        supportsAllDrives=True  # Важно за споделени папки
-    )
+        supportsAllDrives=True
+    ).execute()
 
-    response = None
-    while response is None:
-        status, response = request.next_chunk()
-        if status:
-            st.write(f"⏳ Качване: {int(status.progress() * 100)}%")
+    # 2. ПРАВИМ ТЕБ СОБСТВЕНИК (Това решава проблема с квотата)
+    # Замени 'твоя_имейл@gmail.com' с твоя истински имейл
+    user_permission = {
+        'type': 'user',
+        'role': 'owner',
+        'emailAddress': 'denislav5ev@gmail.com'  # Твоят имейл от снимката
+    }
+    service.permissions().create(
+        fileId=file.get('id'),
+        body=user_permission,
+        transferOwnership=True,
+        supportsAllDrives=True
+    ).execute()
 
-    return response.get('id')
+    return file.get('id')
 # ==========================================
 # 3. СИСТЕМА ЗА ВХОД
 # ==========================================
