@@ -85,7 +85,7 @@ try:
     Твоята сила е, че комбинираш Закона за народните читалища (ЗНЧ) с локалните документи на потребителя.
     Отговаряй винаги на български език, професионално и структурирано."""
 
-    model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=instruction)
+    model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=instruction)
 except Exception as e:
     st.error(f"Грешка при конфигурацията на Gemini: {e}")
     st.stop()
