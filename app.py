@@ -52,7 +52,12 @@ def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
     file_metadata = {'name': file_name, 'parents': [folder_id]}
     media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
-    service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields='id',
+        supportsAllDrives=True
+    ).execute()
 
 
 # ==========================================
