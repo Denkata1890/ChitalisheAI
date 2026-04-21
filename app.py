@@ -50,16 +50,34 @@ def get_or_create_folder(folder_name):
 
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
-    file_metadata = {'name': file_name, 'parents': [folder_id]}
-    media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
-    service.files().create(
+
+    file_metadata = {
+        'name': file_name,
+        'parents': [folder_id]
+    }
+
+    media = MediaIoBaseUpload(
+        io.BytesIO(file_content),
+        mimetype='application/octet-stream',
+        resumable=True
+    )
+
+    # ТУК Е ПРОМЯНАТА:
+    # Използваме 'supportsAllDrives=True' и проверяваме квотата
+    request = service.files().create(
         body=file_metadata,
         media_body=media,
         fields='id',
-        supportsAllDrives=True
-    ).execute()
+        supportsAllDrives=True  # Важно за споделени папки
+    )
 
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            st.write(f"⏳ Качване: {int(status.progress() * 100)}%")
 
+    return response.get('id')
 # ==========================================
 # 3. СИСТЕМА ЗА ВХОД
 # ==========================================
