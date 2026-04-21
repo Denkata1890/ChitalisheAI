@@ -9,7 +9,7 @@ import PyPDF2
 # ==========================================
 # 1. ОСНОВНИ НАСТРОЙКИ (Сложи твоето ID тук!)
 # ==========================================
-PARENT_FOLDER_ID = "h1nGBrDKG14XUtA70J4j2ZpSEFxc5FGsJE"
+PARENT_FOLDER_ID = "1nGBrDKG14XUtA70J4j2ZpSEFxc5FGsJE"
 
 # Настройка на Gemini
 try:
