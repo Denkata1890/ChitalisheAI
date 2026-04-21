@@ -31,19 +31,19 @@ def get_drive_service():
 
 def get_or_create_folder(folder_name):
     service = get_drive_service()
-    # Търсим папката на читалището ВЪТРЕ в основната папка
+    # Важно: PARENT_FOLDER_ID трябва да е само '1nGBrDKG14XUtA70J4j2ZpSEFxc5FGsJE'
     query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     results = service.files().list(q=query, fields="files(id, name)").execute()
     items = results.get('files', [])
 
     if not items:
-        # Създаваме нова подпапка с родител PARENT_FOLDER_ID
         file_metadata = {
             'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [PARENT_FOLDER_ID]
         }
-        folder = service.files().create(body=file_metadata, fields='id').execute()
+        # Тук добавяме supportsAllDrives
+        folder = service.files().create(body=file_metadata, fields='id', supportsAllDrives=True).execute()
         return folder.get('id')
     return items[0]['id']
 
@@ -56,29 +56,33 @@ def upload_to_drive(file_content, file_name, folder_id):
     }
     media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
 
-    # 1. Качваме файла
-    file = service.files().create(
+    # 1. Качваме файла с параметър за споделено пространство
+    uploaded_file = service.files().create(
         body=file_metadata,
         media_body=media,
         fields='id',
         supportsAllDrives=True
     ).execute()
 
-    # 2. ПРАВИМ ТЕБ СОБСТВЕНИК (Това решава проблема с квотата)
-    # Замени 'твоя_имейл@gmail.com' с твоя истински имейл
-    user_permission = {
-        'type': 'user',
-        'role': 'owner',
-        'emailAddress': 'denislav5ev@gmail.com'  # Твоят имейл от снимката
-    }
-    service.permissions().create(
-        fileId=file.get('id'),
-        body=user_permission,
-        transferOwnership=True,
-        supportsAllDrives=True
-    ).execute()
+    file_id = uploaded_file.get('id')
 
-    return file.get('id')
+    # 2. КРИТИЧНАТА СТЪПКА: Прехвърляме квотата към ТЕБ
+    # Така файлът спира да тежи на робота и се таксува на твоя диск
+    try:
+        permission = {
+            'type': 'user',
+            'role': 'writer',  # Използваме writer за по-лесно прехвърляне
+            'emailAddress': 'denislav5ev@gmail.com'  # Твоят имейл
+        }
+        service.permissions().create(
+            fileId=file_id,
+            body=permission,
+            supportsAllDrives=True
+        ).execute()
+    except Exception as e:
+        st.warning(f"Забележка при правата: {e}")
+
+    return file_id
 # ==========================================
 # 3. СИСТЕМА ЗА ВХОД
 # ==========================================
