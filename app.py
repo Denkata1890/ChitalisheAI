@@ -1,116 +1,120 @@
 import streamlit as st
-import io
 import google.generativeai as genai
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 import PyPDF2
+import io
 
 # ==========================================
-# 1. ТВОЕТО НОВО ID НА ПОДПАПКАТА
+# 1. НАСТРОЙКИ
 # ==========================================
-# Сложи тук ID-то на папката 'nch_svetlina_shipka', която създаде ръчно
-PARENT_FOLDER_ID = "1w08JtXDo4Si3zNXrdP_D3iXrgCTkZHJg"
+st.set_page_config(page_title="Chitalishe AI Pro", page_icon="🏛️")
 
 # Настройка на Gemini
-try:
+if "GEMINI_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
-except Exception as e:
-    st.error(f"Грешка при Gemini: {e}")
+else:
+    st.error("Липсва Gemini API Key в Secrets!")
+
 
 # ==========================================
-# 2. ФУНКЦИИ ЗА GOOGLE DRIVE (ОПТИМИЗИРАНИ)
-# ==========================================
-def upload_to_drive(file_content, file_name, folder_id):
-    service = get_drive_service()
-
-    # 1. Подготвяме метаданните
-    file_metadata = {
-        'name': file_name,
-        'parents': [folder_id]
-    }
-
-    # 2. Използваме директно качване (без resumable), за да избегнем квотната проверка при малки файлове
-    media = MediaIoBaseUpload(
-        io.BytesIO(file_content),
-        mimetype='application/octet-stream',
-        chunksize=1024 * 1024,  # 1MB парчета
-        resumable=False  # ВАЖНО: Пробвай с False
-    )
-
-    try:
-        # 3. Опит за качване
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
-        return file.get('id')
-
-    except Exception as e:
-        # Ако пак даде Quota error, това е заради собствеността.
-        # Единственият изход е да ползваш "Shared Drive" (ако имаш Workspace)
-        # или да качваш файла като "Google Doc" тип, който понякога не заема място
-        raise e
-
-# ==========================================
-# 3. СИСТЕМА ЗА ВХОД
+# 2. СИСТЕМА ЗА ВХОД
 # ==========================================
 def check_password():
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-    if st.session_state["authenticated"]:
+    if st.session_state.get("authenticated"):
         return True
-    st.title("🔐 Вход")
+
+    st.title("🏛️ Читалищен Секретар AI")
+    st.subheader("Моля, влезте в системата")
+
     user_input = st.text_input("Потребителско име")
     pass_input = st.text_input("Парола", type="password")
+
     if st.button("Влизане"):
-        if "users" in st.secrets and user_input in st.secrets["users"] and st.secrets["users"][user_input] == pass_input:
-            st.session_state["authenticated"] = True
-            st.session_state["username"] = user_input
-            st.rerun()
+        if "users" in st.secrets and user_input in st.secrets["users"]:
+            if st.secrets["users"][user_input] == pass_input:
+                st.session_state["authenticated"] = True
+                st.session_state["username"] = user_input
+                st.rerun()
+            else:
+                st.error("❌ Грешна парола")
         else:
-            st.error("❌ Грешка")
+            st.error("❌ Потребителят не съществува")
     return False
+
 
 if not check_password():
     st.stop()
 
 # ==========================================
-# 4. ИНТЕРФЕЙС И КАЧВАНЕ
+# 3. ГЛАВЕН ИНТЕРФЕЙС
 # ==========================================
-st.title("🏛️ Дигитален Секретар")
+st.sidebar.title(f"👤 {st.session_state['username']}")
+if st.sidebar.button("Изход"):
+    st.session_state["authenticated"] = False
+    st.rerun()
 
-uploaded_file = st.file_uploader("Изберете файл", type=['pdf', 'txt'])
+st.title("🏛️ Дигитален Читалищен Секретар")
+st.markdown("---")
+
+# Списък за "Библиотека" (съхранява се в сесията на приложението)
+if "library" not in st.session_state:
+    st.session_state["library"] = []
+
+# Качване на файл
+uploaded_file = st.file_uploader("Качете документ (PDF или TXT)", type=['pdf', 'txt'])
 
 if uploaded_file is not None:
-    # Защита от повторно качване
-    if "last_uploaded" not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
-        with st.spinner("💾 Изпращане към Вашия Google Drive..."):
+    # Проверка дали файлът вече е в библиотеката
+    file_exists = any(item['name'] == uploaded_file.name for item in st.session_state.library)
+
+    if not file_exists:
+        with st.spinner("📦 Обработка и архивиране..."):
+            # Извличане на текст
             try:
-                file_bytes = uploaded_file.getvalue()
-                # КАЧВАМЕ ДИРЕКТНО В PARENT_FOLDER_ID
-                f_id = upload_to_drive(file_bytes, uploaded_file.name, PARENT_FOLDER_ID)
-                st.session_state.last_uploaded = uploaded_file.name
-                st.success(f"✅ Готово! Файлът е записан успешно.")
+                if uploaded_file.type == "application/pdf":
+                    reader = PyPDF2.PdfReader(uploaded_file)
+                    text_content = "".join([page.extract_text() for page in reader.pages])
+                else:
+                    text_content = uploaded_file.read().decode("utf-8")
+
+                # Добавяне в библиотеката
+                st.session_state.library.append({
+                    "name": uploaded_file.name,
+                    "content": text_content
+                })
+                st.success(f"✅ Файлът '{uploaded_file.name}' е добавен в библиотеката!")
             except Exception as e:
-                st.error(f"❌ Проблем при запис: {e}")
+                st.error(f"Грешка при четене: {e}")
 
-    # GEMINI АНАЛИЗ
-    try:
-        if uploaded_file.type == "application/pdf":
-            reader = PyPDF2.PdfReader(uploaded_file)
-            text_content = "".join([page.extract_text() for page in reader.pages])
-        else:
-            text_content = uploaded_file.read().decode("utf-8")
+    # Избор на файл за работа от библиотеката
+    current_file = next((item for item in st.session_state.library if item['name'] == uploaded_file.name), None)
 
-        st.divider()
-        user_question = st.text_input("❓ Попитайте нещо за документа:")
+    if current_file:
+        st.info(f"📄 Активен документ: **{current_file['name']}**")
+
+        # Чат с документа
+        st.subheader("🤖 Попитайте AI за този документ")
+        user_question = st.text_input("Въведете въпрос (напр. 'Направи резюме' или 'Кога е крайният срок?'):")
+
         if user_question:
-            with st.spinner("🤖 Анализирам..."):
-                response = model.generate_content(f"Текст: {text_content}\nВъпрос: {user_question}")
-                st.write(response.text)
-    except Exception as e:
-        st.error(f"Грешка при четене: {e}")
+            with st.spinner("🧠 Мисля..."):
+                try:
+                    prompt = f"""
+                    Ти си експерт по читалищна дейност и администрация. 
+                    Базирай се на следния текст: {current_file['content']}
+                    Отговори на въпроса: {user_question}
+                    """
+                    response = model.generate_content(prompt)
+                    st.markdown("### 🤖 Отговор:")
+                    st.write(response.text)
+                except Exception as e:
+                    st.error(f"Грешка при Gemini: {e}")
+
+# ==========================================
+# 4. БИБЛИОТЕКА (SIDEBAR)
+# ==========================================
+if st.session_state.library:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📚 Вашата библиотека")
+    for doc in st.session_state.library:
+        st.sidebar.write(f"• {doc['name']}")
