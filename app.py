@@ -6,46 +6,22 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import PyPDF2
 
-
+# ==========================================
+# 1. ОСНОВНИ НАСТРОЙКИ (Сложи твоето ID тук!)
+# ==========================================
 PARENT_FOLDER_ID = "https://drive.google.com/drive/folders/1nGBrDKG14XUtA70J4j2ZpSEFxc5FGsJE"
-# --- 1. НАСТРОЙКА НА GEMINI ---
+
+# Настройка на Gemini
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error("Грешка при конфигуриране на Gemini API.")
-
-# --- 2. СИСТЕМА ЗА ВХОД (SECRETS) ---
-try:
-    USERS = st.secrets["users"]
-except:
-    USERS = {"admin": "admin123"}
+    st.error(f"Грешка при настройка на Gemini: {e}")
 
 
-def check_password():
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-    if st.session_state["authenticated"]:
-        return True
-
-    st.title("🔐 Вход в Chitalishe AI Pro")
-    user = st.text_input("Потребителско име")
-    password = st.text_input("Парола", type="password")
-    if st.button("Влизане"):
-        if user in USERS and USERS[user] == password:
-            st.session_state["authenticated"] = True
-            st.session_state["username"] = user
-            st.rerun()
-        else:
-            st.error("❌ Грешно потребителско име или парола")
-    return False
-
-
-if not check_password():
-    st.stop()
-
-
-# --- 3. ФУНКЦИИ ЗА GOOGLE DRIVE ---
+# ==========================================
+# 2. ФУНКЦИИ ЗА GOOGLE DRIVE
+# ==========================================
 def get_drive_service():
     info = st.secrets["gcp_service_account"]
     credentials = service_account.Credentials.from_service_account_info(info)
@@ -55,103 +31,109 @@ def get_drive_service():
 
 def get_or_create_folder(folder_name):
     service = get_drive_service()
-
-    # Търсим дали папката на читалището вече съществува вътре в твоята основна папка
+    # Търсим папката на читалището ВЪТРЕ в основната папка
     query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     results = service.files().list(q=query, fields="files(id, name)").execute()
     items = results.get('files', [])
 
     if not items:
-        # СЪЗДАВАНЕ: Важно е да подадем PARENT_FOLDER_ID като родител
+        # Създаваме нова подпапка с родител PARENT_FOLDER_ID
         file_metadata = {
             'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [PARENT_FOLDER_ID]
         }
         folder = service.files().create(body=file_metadata, fields='id').execute()
-        folder_id = folder.get('id')
-        st.write(f"📁 Създадена нова папка с ID: {folder_id}")  # Това ще се появи в сайта
-        return folder_id
-
+        return folder.get('id')
     return items[0]['id']
 
 
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
-    file_metadata = {
-        'name': file_name,
-        'parents': [folder_id]
-    }
+    file_metadata = {'name': file_name, 'parents': [folder_id]}
     media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
-    uploaded_file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    st.write(f"🚀 Файлът е качен успешно с ID: {uploaded_file.get('id')}")
-
-# --- 4. ФУНКЦИЯ ЗА ЧЕТЕНЕ НА PDF ---
-def read_pdf(file):
-    pdf_reader = PyPDF2.PdfReader(file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
+    service.files().create(body=file_metadata, media_body=media, fields='id').execute()
 
 
-# --- 5. ИНТЕРФЕЙС НА ПРИЛОЖЕНИЕТО ---
-st.sidebar.write(f"👤 Потребител: **{st.session_state['username']}**")
+# ==========================================
+# 3. СИСТЕМА ЗА ВХОД
+# ==========================================
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if st.session_state["authenticated"]:
+        return True
+
+    st.title("🔐 Вход в Chitalishe AI Pro")
+    user_input = st.text_input("Потребителско име")
+    pass_input = st.text_input("Парола", type="password")
+
+    if st.button("Влизане"):
+        if "users" in st.secrets and user_input in st.secrets["users"] and st.secrets["users"][
+            user_input] == pass_input:
+            st.session_state["authenticated"] = True
+            st.session_state["username"] = user_input
+            st.rerun()
+        else:
+            st.error("❌ Грешно потребителско име или парола")
+    return False
+
+
+# Спираме изпълнението тук, ако не е логнат
+if not check_password():
+    st.stop()
+
+# ==========================================
+# 4. ГЛАВЕН ИНТЕРФЕЙС (Изпълнява се само след Login)
+# ==========================================
+st.sidebar.title(f"👤 {st.session_state['username']}")
 if st.sidebar.button("Изход"):
     st.session_state["authenticated"] = False
     st.rerun()
 
 st.title("🏛️ Дигитален Читалищен Секретар")
-st.info("Качете документ (Устав, Протокол, Отчет), за да го запазите в облака и да зададете въпроси към него.")
+st.write("Качете документ, за да го анализираме и запишем в облака.")
 
-uploaded_file = st.file_uploader("Изберете файл", type=['pdf', 'txt'])
+uploaded_file = st.file_uploader("Изберете PDF или TXT файл", type=['pdf', 'txt'])
 
 if uploaded_file is not None:
-    st.write("🔎 Файлът е засечен от системата...")  # Това трябва да се появи веднага
+    # ИНДИКАТОР ЗА ДЕБЪГ (Ще видиш това веднага при качване)
+    st.info(f"🔎 Обработка на файл: {uploaded_file.name}")
 
     user_folder_name = st.session_state['username']
 
-    # ПРОВЕРКА: Вече качен ли е този файл в тази сесия?
+    # ЛОГИКА ЗА КАЧВАНЕ В DRIVE
     if "last_uploaded" not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
-        with st.spinner("💾 Опит за качване в Google Drive..."):
+        with st.spinner("💾 Записване в Google Drive..."):
             try:
-                # 1. Свързване
+                # Вземаме ID на папката
                 folder_id = get_or_create_folder(user_folder_name)
-                st.write(f"📂 Работим в папка с ID: {folder_id}")
-
-                # 2. Качване
+                # Качваме съдържанието
                 file_bytes = uploaded_file.getvalue()
                 upload_to_drive(file_bytes, uploaded_file.name, folder_id)
 
-                # 3. Маркираме като качен
                 st.session_state.last_uploaded = uploaded_file.name
-                st.success(f"✅ УСПЕХ: {uploaded_file.name} е в облака!")
+                st.success(f"✅ Файлът е архивиран в Drive (Folder ID: {folder_id})")
             except Exception as e:
-                st.error(f"❌ ГРЕШКА ПРИ КАЧВАНЕ: {e}")
-    else:
-        st.info("ℹ️ Този файл вече беше качен успешно.")
+                st.error(f"❌ Грешка при качване в Drive: {e}")
 
-    # СТЪПКА Б: ОБРАБОТКА И АНАЛИЗ С GEMINI
-    with st.spinner("🧠 ИИ анализира документа..."):
+    # ЛОГИКА ЗА GEMINI (АНАЛИЗ)
+    try:
         if uploaded_file.type == "application/pdf":
-            text_content = read_pdf(uploaded_file)
+            reader = PyPDF2.PdfReader(uploaded_file)
+            text_content = "".join([page.extract_text() for page in reader.pages])
         else:
             text_content = uploaded_file.read().decode("utf-8")
 
-        st.success("Документът е готов за въпроси!")
-
-        user_question = st.text_input("Какво искате да разберете от този документ?")
+        st.divider()
+        user_question = st.text_input("❓ Задайте въпрос към документа:")
 
         if user_question:
-            prompt = f"""
-            Ти си експерт по работата на народните читалища в България. 
-            Използвай следния текст от документ, за да отговориш на въпроса.
-            Текст: {text_content}
-            Въпрос: {user_question}
-            """
-            response = model.generate_content(prompt)
-            st.markdown("### 🤖 Отговор:")
-            st.write(response.text)
-
-st.write("---")
-st.write("DEBUG: Програмата стигна до края на файла.")
+            with st.spinner("🤖 Мисля..."):
+                prompt = f"Ти си читалищен експерт. На база на този текст: {text_content}\n\nОтговори на въпроса: {user_question}"
+                response = model.generate_content(prompt)
+                st.markdown("### 🤖 Отговор:")
+                st.write(response.text)
+    except Exception as e:
+        st.error(f"❌ Грешка при четене на файла: {e}")
