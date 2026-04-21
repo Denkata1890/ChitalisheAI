@@ -1,12 +1,12 @@
 import streamlit as st
 import google.generativeai as genai
 import os
-import warnings
 from docx import Document
 from io import BytesIO
+import PyPDF2
 
 
-
+# 1. ПОМОЩНИ ФУНКЦИИ
 def create_docx(text):
     doc = Document()
     doc.add_heading('Официален документ - Читалищен Секретар AI', 0)
@@ -17,88 +17,99 @@ def create_docx(text):
     return bio
 
 
-warnings.filterwarnings("ignore")
+def extract_text_from_pdf(pdf_file):
+    pdf_reader = PyPDF2.PdfReader(pdf_file)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
 
 
+# 2. КОНФИГУРАЦИЯ НА ИИ
 API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=API_KEY)
 
+instruction = """Ти си професионален софтуерен асистент за управление на читалища. 
+Твоята сила е, че комбинираш ОБЩИТЕ ЗАКОНИ (ЗНЧ) с ЛОКАЛНИЯ АРХИВ (Устав, заповеди, договори) на конкретното читалище.
+Винаги отговаряй въз основа на предоставените документи. Ако липсва информация в локалния архив, провери в законите."""
 
-instruction = """Ти си професионален асистент на народните читалища. Имаш две основни роли:
-1. ПРАВЕН КОНСУЛТАНТ: Отговаряш точно по ЗНЧ, цитирайки членове.
-2. ЦИФРОВ ПРОТОКОЛИСТ: Получаваш транскрипция (текст) от събрание и я превръщаш в официален протокол. 
-Извличаш: дата, присъстващи, дневен ред, резюме на дискусиите и ВСИЧКИ взети решения. 
-Ако информацията е непълна, оставяш места за попълване [използвай скоби]."""
-
-model = genai.GenerativeModel(
-    model_name='models/gemini-2.5-flash',
-    system_instruction=instruction
-)
+model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=instruction)
 
 
+# 3. ЗАРЕЖДАНЕ НА ГЛОБАЛНАТА БАЗА (ЗАКОНИТЕ)
 @st.cache_data
-def get_knowledge_base():
+def get_global_knowledge():
     context = ""
     knowledge_dir = "ai_knowledge_base"
     if os.path.exists(knowledge_dir):
-        files = sorted(os.listdir(knowledge_dir))
-        for filename in files:
+        for filename in sorted(os.listdir(knowledge_dir)):
             with open(os.path.join(knowledge_dir, filename), 'r', encoding='utf-8') as f:
-                context += f.read() + "\n\n"
+                context += f"ИЗТОЧНИК {filename}:\n{f.read()}\n\n"
     return context
 
 
+# 4. ИНТЕРФЕЙС
+st.set_page_config(page_title="Chitalishe AI Pro", page_icon="🏛️", layout="wide")
 
-st.set_page_config(page_title="ИИ Читалищен Секретар", page_icon="🏛️", layout="wide")
+# --- СТРАНИЧНА ЛЕНТА (УПРАВЛЕНИЕ НА АРХИВА) ---
+st.sidebar.title("🔐 Личен архив на Читалището")
+st.sidebar.write("Тук качвате документите, които са специфични само за вашата организация.")
 
+uploaded_files = st.sidebar.file_uploader(
+    "Качете Устав, договори или стари протоколи (PDF/TXT):",
+    type=['pdf', 'txt'],
+    accept_multiple_files=True
+)
 
-st.sidebar.title("⚙️ Настройки на асистента")
-mode = st.sidebar.radio("Изберете режим:", ["⚖️ Правна консултация", "📝 Дигитален протоколист"])
+local_context = ""
+if uploaded_files:
+    st.sidebar.success(f"Заредени са {len(uploaded_files)} лични документа.")
+    for uploaded_file in uploaded_files:
+        if uploaded_file.name.endswith('.pdf'):
+            local_context += f"\nДОКУМЕНТ ОТ ВАШИЯ АРХИВ ({uploaded_file.name}):\n" + extract_text_from_pdf(
+                uploaded_file)
+        else:
+            local_context += f"\nДОКУМЕНТ ОТ ВАШИЯ АРХИВ ({uploaded_file.name}):\n" + str(uploaded_file.read(), "utf-8")
 
+# --- ИЗБОР НА РЕЖИМ ---
 st.sidebar.divider()
-st.sidebar.info("В режим 'Протоколист' просто поставете текста от записа на вашето събрание в чата.")
+mode = st.sidebar.radio("Действие:", ["⚖️ Консултация и Търсене", "📝 Създаване на протокол (Аудио/Текст)"])
 
+# --- ОСНОВЕН ЕКРАН ---
+st.title("🏛️ Читалищен Секретар AI - Професионална версия")
 
-st.title("🏛️ ИИ Асистент 'Читалищен Секретар'")
+if mode == "⚖️ Консултация и Търсене":
+    st.info("ИИ анализира едновременно законите и вашите качени документи.")
+    user_input = st.chat_input("Напр. 'Какво казва нашият Устав за избор на председател?'")
 
+    if user_input:
+        with st.chat_message("user"): st.markdown(user_input)
+        with st.chat_message("assistant"):
+            with st.spinner("Проверявам в архивите..."):
+                global_kb = get_global_knowledge()
+                # Комбинираме всичко: Глобални закони + Локални документи + Въпрос
+                full_prompt = f"ГЛОБАЛНИ ЗАКОНИ:\n{global_kb}\n\nЛОКАЛЕН АРХИВ НА ЧИТАЛИЩЕТО:\n{local_context}\n\nВЪПРОС: {user_input}"
 
+                response = model.generate_content(full_prompt)
+                st.markdown(response.text)
 
-if mode == "⚖️ Правна консултация":
-    st.subheader("Търсене в законите и администрацията")
-    user_input = st.chat_input("Напр. Какъв е мандатът на Настоятелството?")
+                # Опция за изтегляне на отговора
+                docx = create_docx(response.text)
+                st.download_button("📥 Изтегли като Word", data=docx, file_name="consultation.docx")
+
 else:
-    st.subheader("Генератор на протоколи от събрания")
+    # РЕЖИМ ПРОТОКОЛИСТ (С добавено знание от качените документи)
+    st.subheader("Генератор на протоколи")
+    audio_file = st.file_uploader("Качете запис:", type=['mp3', 'wav', 'm4a'])
+    text_input = st.text_area("Или поставете текст тук:", height=150)
 
-
-    tab1, tab2 = st.tabs(["📝 Суров текст", "🎙️ Аудио запис"])
-
-    with tab1:
-        text_input = st.text_area("Поставете транскрипция тук:", height=200)
-
-    with tab2:
-        audio_file = st.file_uploader("Качете аудио файл от събранието (mp3, wav, m4a):", type=['mp3', 'wav', 'm4a'])
-        if audio_file:
-            st.audio(audio_file)
-
-    if st.button("Генерирай протокол"):
-        if mode == "📝 Дигитален протоколист":
-            with st.chat_message("assistant"):
-                with st.spinner("Анализирам срещата..."):
-                    try:
-                        if audio_file:
-
-                            prompt = "Това е аудио запис от събрание на читалище. Моля, направи официален протокол."
-                            response = model.generate_content([prompt, audio_file])
-                        else:
-
-                            prompt = f"Направи официален протокол от този текст:\n\n{text_input}"
-                            response = model.generate_content(prompt)
-
-                        answer = response.text
-                        st.markdown(answer)
-
-
-                        docx_file = create_docx(answer)
-                        st.download_button("📥 Изтегли Протокола", data=docx_file, file_name="protocol.docx")
-                    except Exception as e:
-                        st.error(f"Грешка: {e}")
+    if st.button("Генерирай официален документ"):
+        with st.chat_message("assistant"):
+            with st.spinner("Работя по документа..."):
+                input_data = [
+                    f"Използвай този личен архив за контекст:\n{local_context}\n\nНаправи протокол от това събрание:",
+                    audio_file if audio_file else text_input]
+                response = model.generate_content(input_data)
+                st.markdown(response.text)
+                docx = create_docx(response.text)
+                st.download_button("📥 Изтегли готовия файл", data=docx, file_name="protocol_pro.docx")
