@@ -6,6 +6,8 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import PyPDF2
 
+
+PARENT_FOLDER_ID = "https://drive.google.com/drive/folders/1nGBrDKG14XUtA70J4j2ZpSEFxc5FGsJE"
 # --- 1. НАСТРОЙКА НА GEMINI ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -53,16 +55,22 @@ def get_drive_service():
 
 def get_or_create_folder(folder_name):
     service = get_drive_service()
-    query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+
+    # Търсим папката на читалището вътре в нашата основна папка
+    query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     results = service.files().list(q=query, fields="files(id, name)").execute()
     items = results.get('files', [])
 
     if not items:
-        file_metadata = {'name': folder_name, 'mimeType': 'application/vnd.google-apps.folder'}
+        # Създаваме нова подпапка точно в твоята споделена папка
+        file_metadata = {
+            'name': folder_name,
+            'mimeType': 'application/vnd.google-apps.folder',
+            'parents': [PARENT_FOLDER_ID]
+        }
         folder = service.files().create(body=file_metadata, fields='id').execute()
         return folder.get('id')
     return items[0]['id']
-
 
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
