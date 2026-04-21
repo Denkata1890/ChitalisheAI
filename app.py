@@ -7,20 +7,20 @@ from googleapiclient.http import MediaIoBaseUpload
 import PyPDF2
 
 # ==========================================
-# 1. ОСНОВНИ НАСТРОЙКИ (Сложи твоето ID тук!)
+# 1. ТВОЕТО НОВО ID НА ПОДПАПКАТА
 # ==========================================
-PARENT_FOLDER_ID = "1nGBrDKG14XUtA70J4j2ZpSEFxc5FGsJE"
+# Сложи тук ID-то на папката 'nch_svetlina_shipka', която създаде ръчно
+PARENT_FOLDER_ID = "1w08JtXDo4Si3zNXrdP_D3iXrgCTkZHJg"
 
 # Настройка на Gemini
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error(f"Грешка при настройка на Gemini: {e}")
-
+    st.error(f"Грешка при Gemini: {e}")
 
 # ==========================================
-# 2. ФУНКЦИИ ЗА GOOGLE DRIVE
+# 2. ФУНКЦИИ ЗА GOOGLE DRIVE (ОПТИМИЗИРАНИ)
 # ==========================================
 def get_drive_service():
     info = st.secrets["gcp_service_account"]
@@ -28,148 +28,70 @@ def get_drive_service():
     scoped_credentials = credentials.with_scopes(['https://www.googleapis.com/auth/drive'])
     return build('drive', 'v3', credentials=scoped_credentials)
 
-
-def get_or_create_folder(folder_name):
-    service = get_drive_service()
-    # Търсим папката
-    query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    # Тук използваме само supportsAllDrives=True
-    results = service.files().list(
-        q=query,
-        fields="files(id, name)",
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True  # List поддържа този параметър
-    ).execute()
-    items = results.get('files', [])
-
-    if not items:
-        file_metadata = {
-            'name': folder_name,
-            'mimeType': 'application/vnd.google-apps.folder',
-            'parents': [PARENT_FOLDER_ID]
-        }
-        folder = service.files().create(
-            body=file_metadata,
-            fields='id',
-            supportsAllDrives=True  # Create поддържа само това
-        ).execute()
-        return folder.get('id')
-    return items[0]['id']
-
-
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
-
     file_metadata = {
         'name': file_name,
         'parents': [folder_id]
     }
-
     media = MediaIoBaseUpload(
         io.BytesIO(file_content),
         mimetype='application/octet-stream',
         resumable=True
     )
-
-    # ТУК Е ПОПРАВКАТА: Премахнат е грешният параметър
+    # Качваме директно в твоята папка
     file = service.files().create(
         body=file_metadata,
         media_body=media,
         fields='id',
         supportsAllDrives=True
     ).execute()
-
     return file.get('id')
 
-def get_or_create_folder(folder_name):
-    service = get_drive_service()
-    # Търсим папката
-    query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    results = service.files().list(
-        q=query,
-        fields="files(id, name)",
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
-    ).execute()
-    items = results.get('files', [])
-
-    if not items:
-        file_metadata = {
-            'name': folder_name,
-            'mimeType': 'application/vnd.google-apps.folder',
-            'parents': [PARENT_FOLDER_ID]
-        }
-        folder = service.files().create(
-            body=file_metadata,
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
-        return folder.get('id')
-    return items[0]['id']
 # ==========================================
 # 3. СИСТЕМА ЗА ВХОД
 # ==========================================
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
-
     if st.session_state["authenticated"]:
         return True
-
-    st.title("🔐 Вход в Chitalishe AI Pro")
+    st.title("🔐 Вход")
     user_input = st.text_input("Потребителско име")
     pass_input = st.text_input("Парола", type="password")
-
     if st.button("Влизане"):
-        if "users" in st.secrets and user_input in st.secrets["users"] and st.secrets["users"][
-            user_input] == pass_input:
+        if "users" in st.secrets and user_input in st.secrets["users"] and st.secrets["users"][user_input] == pass_input:
             st.session_state["authenticated"] = True
             st.session_state["username"] = user_input
             st.rerun()
         else:
-            st.error("❌ Грешно потребителско име или парола")
+            st.error("❌ Грешка")
     return False
 
-
-# Спираме изпълнението тук, ако не е логнат
 if not check_password():
     st.stop()
 
 # ==========================================
-# 4. ГЛАВЕН ИНТЕРФЕЙС (Изпълнява се само след Login)
+# 4. ИНТЕРФЕЙС И КАЧВАНЕ
 # ==========================================
-st.sidebar.title(f"👤 {st.session_state['username']}")
-if st.sidebar.button("Изход"):
-    st.session_state["authenticated"] = False
-    st.rerun()
+st.title("🏛️ Дигитален Секретар")
 
-st.title("🏛️ Дигитален Читалищен Секретар")
-st.write("Качете документ, за да го анализираме и запишем в облака.")
-
-uploaded_file = st.file_uploader("Изберете PDF или TXT файл", type=['pdf', 'txt'])
+uploaded_file = st.file_uploader("Изберете файл", type=['pdf', 'txt'])
 
 if uploaded_file is not None:
-    # ИНДИКАТОР ЗА ДЕБЪГ (Ще видиш това веднага при качване)
-    st.info(f"🔎 Обработка на файл: {uploaded_file.name}")
-
-    user_folder_name = st.session_state['username']
-
-    # ЛОГИКА ЗА КАЧВАНЕ В DRIVE
+    # Защита от повторно качване
     if "last_uploaded" not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
-        with st.spinner("💾 Записване в Google Drive..."):
+        with st.spinner("💾 Изпращане към Вашия Google Drive..."):
             try:
-                # Вземаме ID на папката
-                folder_id = get_or_create_folder(user_folder_name)
-                # Качваме съдържанието
                 file_bytes = uploaded_file.getvalue()
-                upload_to_drive(file_bytes, uploaded_file.name, folder_id)
-
+                # КАЧВАМЕ ДИРЕКТНО В PARENT_FOLDER_ID
+                f_id = upload_to_drive(file_bytes, uploaded_file.name, PARENT_FOLDER_ID)
                 st.session_state.last_uploaded = uploaded_file.name
-                st.success(f"✅ Файлът е архивиран в Drive (Folder ID: {folder_id})")
+                st.success(f"✅ Готово! Файлът е записан успешно.")
             except Exception as e:
-                st.error(f"❌ Грешка при качване в Drive: {e}")
+                st.error(f"❌ Проблем при запис: {e}")
 
-    # ЛОГИКА ЗА GEMINI (АНАЛИЗ)
+    # GEMINI АНАЛИЗ
     try:
         if uploaded_file.type == "application/pdf":
             reader = PyPDF2.PdfReader(uploaded_file)
@@ -178,13 +100,10 @@ if uploaded_file is not None:
             text_content = uploaded_file.read().decode("utf-8")
 
         st.divider()
-        user_question = st.text_input("❓ Задайте въпрос към документа:")
-
+        user_question = st.text_input("❓ Попитайте нещо за документа:")
         if user_question:
-            with st.spinner("🤖 Мисля..."):
-                prompt = f"Ти си читалищен експерт. На база на този текст: {text_content}\n\nОтговори на въпроса: {user_question}"
-                response = model.generate_content(prompt)
-                st.markdown("### 🤖 Отговор:")
+            with st.spinner("🤖 Анализирам..."):
+                response = model.generate_content(f"Текст: {text_content}\nВъпрос: {user_question}")
                 st.write(response.text)
     except Exception as e:
-        st.error(f"❌ Грешка при четене на файла: {e}")
+        st.error(f"Грешка при четене: {e}")
