@@ -29,11 +29,43 @@ def get_drive_service():
     return build('drive', 'v3', credentials=scoped_credentials)
 
 
+def upload_to_drive(file_content, file_name, folder_id):
+    service = get_drive_service()
+
+    file_metadata = {
+        'name': file_name,
+        'parents': [folder_id]
+    }
+
+    # Използваме BytesIO за съдържанието
+    media = MediaIoBaseUpload(
+        io.BytesIO(file_content),
+        mimetype='application/octet-stream',
+        resumable=True  # Това е важно за заобикаляне на някои лимити
+    )
+
+    # ТУК Е МАГИЯТА: Добавяме и двата параметъра за споделено пространство
+    file = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields='id',
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
+
+    return file.get('id')
+
+
 def get_or_create_folder(folder_name):
     service = get_drive_service()
-    # Важно: PARENT_FOLDER_ID трябва да е само '1nGBrDKG14XUtA70J4j2ZpSEFxc5FGsJE'
+    # Търсим папката
     query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    results = service.files().list(q=query, fields="files(id, name)").execute()
+    results = service.files().list(
+        q=query,
+        fields="files(id, name)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
     items = results.get('files', [])
 
     if not items:
@@ -42,47 +74,13 @@ def get_or_create_folder(folder_name):
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [PARENT_FOLDER_ID]
         }
-        # Тук добавяме supportsAllDrives
-        folder = service.files().create(body=file_metadata, fields='id', supportsAllDrives=True).execute()
-        return folder.get('id')
-    return items[0]['id']
-
-
-def upload_to_drive(file_content, file_name, folder_id):
-    service = get_drive_service()
-    file_metadata = {
-        'name': file_name,
-        'parents': [folder_id]
-    }
-    media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
-
-    # 1. Качваме файла с параметър за споделено пространство
-    uploaded_file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id',
-        supportsAllDrives=True
-    ).execute()
-
-    file_id = uploaded_file.get('id')
-
-    # 2. КРИТИЧНАТА СТЪПКА: Прехвърляме квотата към ТЕБ
-    # Така файлът спира да тежи на робота и се таксува на твоя диск
-    try:
-        permission = {
-            'type': 'user',
-            'role': 'writer',  # Използваме writer за по-лесно прехвърляне
-            'emailAddress': 'denislav5ev@gmail.com'  # Твоят имейл
-        }
-        service.permissions().create(
-            fileId=file_id,
-            body=permission,
+        folder = service.files().create(
+            body=file_metadata,
+            fields='id',
             supportsAllDrives=True
         ).execute()
-    except Exception as e:
-        st.warning(f"Забележка при правата: {e}")
-
-    return file_id
+        return folder.get('id')
+    return items[0]['id']
 # ==========================================
 # 3. СИСТЕМА ЗА ВХОД
 # ==========================================
