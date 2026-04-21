@@ -107,19 +107,29 @@ st.info("Качете документ (Устав, Протокол, Отчет
 uploaded_file = st.file_uploader("Изберете файл", type=['pdf', 'txt'])
 
 if uploaded_file is not None:
+    st.write("🔎 Файлът е засечен от системата...")  # Това трябва да се появи веднага
+
     user_folder_name = st.session_state['username']
 
-    # СТЪПКА А: КАЧВАНЕ В DRIVE
+    # ПРОВЕРКА: Вече качен ли е този файл в тази сесия?
     if "last_uploaded" not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
-        with st.spinner("💾 Записване в облачния архив на читалището..."):
+        with st.spinner("💾 Опит за качване в Google Drive..."):
             try:
+                # 1. Свързване
                 folder_id = get_or_create_folder(user_folder_name)
+                st.write(f"📂 Работим в папка с ID: {folder_id}")
+
+                # 2. Качване
                 file_bytes = uploaded_file.getvalue()
                 upload_to_drive(file_bytes, uploaded_file.name, folder_id)
+
+                # 3. Маркираме като качен
                 st.session_state.last_uploaded = uploaded_file.name
-                st.sidebar.success(f"✅ Файлът е в Drive!")
+                st.success(f"✅ УСПЕХ: {uploaded_file.name} е в облака!")
             except Exception as e:
-                st.error(f"Грешка при запис в Drive: {e}")
+                st.error(f"❌ ГРЕШКА ПРИ КАЧВАНЕ: {e}")
+    else:
+        st.info("ℹ️ Този файл вече беше качен успешно.")
 
     # СТЪПКА Б: ОБРАБОТКА И АНАЛИЗ С GEMINI
     with st.spinner("🧠 ИИ анализира документа..."):
