@@ -56,28 +56,35 @@ def get_drive_service():
 def get_or_create_folder(folder_name):
     service = get_drive_service()
 
-    # Търсим папката на читалището вътре в нашата основна папка
+    # Търсим дали папката на читалището вече съществува вътре в твоята основна папка
     query = f"name = '{folder_name}' and '{PARENT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
     results = service.files().list(q=query, fields="files(id, name)").execute()
     items = results.get('files', [])
 
     if not items:
-        # Създаваме нова подпапка точно в твоята споделена папка
+        # СЪЗДАВАНЕ: Важно е да подадем PARENT_FOLDER_ID като родител
         file_metadata = {
             'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [PARENT_FOLDER_ID]
         }
         folder = service.files().create(body=file_metadata, fields='id').execute()
-        return folder.get('id')
+        folder_id = folder.get('id')
+        st.write(f"📁 Създадена нова папка с ID: {folder_id}")  # Това ще се появи в сайта
+        return folder_id
+
     return items[0]['id']
+
 
 def upload_to_drive(file_content, file_name, folder_id):
     service = get_drive_service()
-    file_metadata = {'name': file_name, 'parents': [folder_id]}
+    file_metadata = {
+        'name': file_name,
+        'parents': [folder_id]
+    }
     media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/octet-stream')
-    service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-
+    uploaded_file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    st.write(f"🚀 Файлът е качен успешно с ID: {uploaded_file.get('id')}")
 
 # --- 4. ФУНКЦИЯ ЗА ЧЕТЕНЕ НА PDF ---
 def read_pdf(file):
