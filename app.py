@@ -152,3 +152,6 @@ if uploaded_file is not None:
             response = model.generate_content(prompt)
             st.markdown("### 🤖 Отговор:")
             st.write(response.text)
+
+st.write("---")
+st.write("DEBUG: Програмата стигна до края на файла.")
